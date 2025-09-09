@@ -71,6 +71,16 @@ const FlappyBird: React.FC = () => {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [timeOfDay, setTimeOfDay] = useState(0);
   const [birdRotation, setBirdRotation] = useState(0);
+  
+  // Performance optimization: cache gradients
+  const gradientCacheRef = useRef<{
+    sky?: CanvasGradient;
+    pipe?: CanvasGradient;
+    cap?: CanvasGradient;
+    ground?: CanvasGradient;
+    bird?: CanvasGradient;
+    lastSkyProgress?: number;
+  }>({});
   const [highScore, setHighScore] = useState(() => {
     const saved = localStorage.getItem('flappyBirdHighScore');
     return saved ? parseInt(saved, 10) : 0;
@@ -175,8 +185,10 @@ const FlappyBird: React.FC = () => {
   const updateGame = useCallback(() => {
     if (gameState !== 'playing') return;
 
-    // Update time of day for dynamic sky
-    setTimeOfDay(prev => (prev + 0.001) % (Math.PI * 2));
+    // Update time of day for dynamic sky (reduced frequency)
+    if (frameCountRef.current % 3 === 0) {
+      setTimeOfDay(prev => (prev + 0.003) % (Math.PI * 2));
+    }
 
     setBird(prev => {
       const newBird = {
@@ -185,32 +197,45 @@ const FlappyBird: React.FC = () => {
         y: prev.y + prev.velocity + GRAVITY
       };
 
-      // Calculate bird rotation based on velocity
-      const rotation = Math.max(-30, Math.min(30, prev.velocity * 3));
-      setBirdRotation(rotation);
+      // Calculate bird rotation based on velocity (less frequent updates)
+      if (frameCountRef.current % 2 === 0) {
+        const rotation = Math.max(-30, Math.min(30, prev.velocity * 3));
+        setBirdRotation(rotation);
+      }
 
       return newBird;
     });
 
-    // Update clouds
-    setClouds(prev => prev.map(cloud => ({
-      ...cloud,
-      x: cloud.x - cloud.speed,
-      // Reset cloud position when it goes off screen
-      ...(cloud.x + cloud.width < -100 ? {
-        x: CANVAS_WIDTH + Math.random() * 200,
-        y: Math.random() * (CANVAS_HEIGHT * 0.4) + 20
-      } : {})
-    })));
+    // Update clouds (reduced frequency)
+    if (frameCountRef.current % 2 === 0) {
+      setClouds(prev => prev.map(cloud => ({
+        ...cloud,
+        x: cloud.x - cloud.speed,
+        // Reset cloud position when it goes off screen
+        ...(cloud.x + cloud.width < -100 ? {
+          x: CANVAS_WIDTH + Math.random() * 200,
+          y: Math.random() * (CANVAS_HEIGHT * 0.4) + 20
+        } : {})
+      })));
+    }
 
-    // Update particles
-    setParticles(prev => prev.filter(particle => {
-      particle.x += particle.vx;
-      particle.y += particle.vy;
-      particle.life -= 1;
-      particle.vy += 0.1; // gravity for particles
-      return particle.life > 0;
-    }));
+    // Update particles (reduced frequency and optimized)
+    if (frameCountRef.current % 2 === 0) {
+      setParticles(prev => {
+        const updated = [];
+        for (let i = 0; i < prev.length; i++) {
+          const particle = prev[i];
+          particle.x += particle.vx;
+          particle.y += particle.vy;
+          particle.life -= 2; // reduce life faster
+          particle.vy += 0.1;
+          if (particle.life > 0) {
+            updated.push(particle);
+          }
+        }
+        return updated;
+      });
+    }
 
     setPipes(prev => {
       let newPipes = [...prev];
@@ -259,16 +284,16 @@ const FlappyBird: React.FC = () => {
       if (scoreIncrement > 0) {
         setScore(prevScore => prevScore + scoreIncrement);
         playSuccess();
-        // Add celebration particles
+        // Add celebration particles (reduced count for performance)
         const newParticles: Particle[] = [];
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 6; i++) {
           newParticles.push({
             x: bird.x + bird.width / 2,
             y: bird.y + bird.height / 2,
             vx: (Math.random() - 0.5) * 6,
             vy: (Math.random() - 0.5) * 6,
-            life: 30,
-            maxLife: 30,
+            life: 20,
+            maxLife: 20,
             size: Math.random() * 3 + 2,
             color: ['#FFD700', '#FFA500', '#FF6B6B', '#4ECDC4'][Math.floor(Math.random() * 4)]
           });
@@ -289,16 +314,16 @@ const FlappyBird: React.FC = () => {
       setGameState('gameOver');
       playHit();
       
-      // Add crash particles
+      // Add crash particles (reduced count for performance)
       const crashParticles: Particle[] = [];
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < 8; i++) {
         crashParticles.push({
           x: bird.x + bird.width / 2,
           y: bird.y + bird.height / 2,
           vx: (Math.random() - 0.5) * 8,
           vy: (Math.random() - 0.5) * 8 - 2,
-          life: 60,
-          maxLife: 60,
+          life: 40,
+          maxLife: 40,
           size: Math.random() * 4 + 1,
           color: ['#FF6B6B', '#FF8E53', '#FFD93D'][Math.floor(Math.random() * 3)]
         });
@@ -334,88 +359,96 @@ const FlappyBird: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Animated gradient sky background
-    const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
     const skyProgress = (Math.sin(timeOfDay) + 1) / 2;
     
-    // Day/night color transitions
-    const skyTop = `hsl(${200 + skyProgress * 30}, ${60 + skyProgress * 20}%, ${70 + skyProgress * 20}%)`;
-    const skyBottom = `hsl(${180 + skyProgress * 40}, ${50 + skyProgress * 30}%, ${80 + skyProgress * 15}%)`;
+    // Cache gradients for better performance
+    if (!gradientCacheRef.current.sky || gradientCacheRef.current.lastSkyProgress !== skyProgress) {
+      const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+      const skyTop = `hsl(${200 + skyProgress * 30}, ${60 + skyProgress * 20}%, ${70 + skyProgress * 20}%)`;
+      const skyBottom = `hsl(${180 + skyProgress * 40}, ${50 + skyProgress * 30}%, ${80 + skyProgress * 15}%)`;
+      gradient.addColorStop(0, skyTop);
+      gradient.addColorStop(1, skyBottom);
+      gradientCacheRef.current.sky = gradient;
+      gradientCacheRef.current.lastSkyProgress = skyProgress;
+    }
     
-    gradient.addColorStop(0, skyTop);
-    gradient.addColorStop(1, skyBottom);
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = gradientCacheRef.current.sky!;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Draw clouds with parallax effect
+    // Draw clouds with parallax effect (simplified for performance)
     clouds.forEach(cloud => {
       ctx.save();
       ctx.globalAlpha = cloud.opacity;
       ctx.fillStyle = `hsl(0, 0%, ${85 + skyProgress * 10}%)`;
       
-      // Cloud shape with multiple circles
+      // Simplified cloud shape (ellipse instead of multiple circles)
       ctx.beginPath();
-      ctx.arc(cloud.x, cloud.y, cloud.width * 0.3, 0, Math.PI * 2);
-      ctx.arc(cloud.x + cloud.width * 0.3, cloud.y, cloud.width * 0.4, 0, Math.PI * 2);
-      ctx.arc(cloud.x + cloud.width * 0.6, cloud.y, cloud.width * 0.35, 0, Math.PI * 2);
-      ctx.arc(cloud.x + cloud.width * 0.2, cloud.y - cloud.height * 0.3, cloud.width * 0.25, 0, Math.PI * 2);
-      ctx.arc(cloud.x + cloud.width * 0.5, cloud.y - cloud.height * 0.2, cloud.width * 0.3, 0, Math.PI * 2);
+      ctx.ellipse(cloud.x + cloud.width / 2, cloud.y, cloud.width / 2, cloud.height / 2, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     });
 
-    // Enhanced pipes with 3D effect
-    pipes.forEach(pipe => {
-      // Main pipe body with gradient
-      const pipeGradient = ctx.createLinearGradient(pipe.x, 0, pipe.x + pipe.width, 0);
+    // Enhanced pipes with 3D effect (cached gradients)
+    if (!gradientCacheRef.current.pipe) {
+      const pipeGradient = ctx.createLinearGradient(0, 0, PIPE_WIDTH, 0);
       pipeGradient.addColorStop(0, '#2E8B57');
       pipeGradient.addColorStop(0.3, '#3CB371');
       pipeGradient.addColorStop(0.7, '#228B22');
       pipeGradient.addColorStop(1, '#1F5F3F');
+      gradientCacheRef.current.pipe = pipeGradient;
       
-      ctx.fillStyle = pipeGradient;
-      
-      // Top pipe
-      ctx.fillRect(pipe.x, 0, pipe.width, pipe.topHeight);
-      // Bottom pipe
-      ctx.fillRect(pipe.x, pipe.bottomY, pipe.width, CANVAS_HEIGHT - pipe.bottomY - 50);
-      
-      // Pipe caps with metallic effect
-      const capGradient = ctx.createLinearGradient(pipe.x - 5, 0, pipe.x + pipe.width + 5, 0);
+      const capGradient = ctx.createLinearGradient(0, 0, PIPE_WIDTH + 10, 0);
       capGradient.addColorStop(0, '#4A4A4A');
       capGradient.addColorStop(0.2, '#7A7A7A');
       capGradient.addColorStop(0.5, '#9A9A9A');
       capGradient.addColorStop(0.8, '#7A7A7A');
       capGradient.addColorStop(1, '#4A4A4A');
+      gradientCacheRef.current.cap = capGradient;
+    }
+    
+    pipes.forEach(pipe => {
+      ctx.save();
+      ctx.translate(pipe.x, 0);
       
-      ctx.fillStyle = capGradient;
-      ctx.fillRect(pipe.x - 5, pipe.topHeight - 20, pipe.width + 10, 20);
-      ctx.fillRect(pipe.x - 5, pipe.bottomY, pipe.width + 10, 20);
+      ctx.fillStyle = gradientCacheRef.current.pipe!;
+      // Top pipe
+      ctx.fillRect(0, 0, pipe.width, pipe.topHeight);
+      // Bottom pipe
+      ctx.fillRect(0, pipe.bottomY, pipe.width, CANVAS_HEIGHT - pipe.bottomY - 50);
+      
+      ctx.fillStyle = gradientCacheRef.current.cap!;
+      ctx.fillRect(-5, pipe.topHeight - 20, pipe.width + 10, 20);
+      ctx.fillRect(-5, pipe.bottomY, pipe.width + 10, 20);
       
       // Pipe highlights
       ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-      ctx.fillRect(pipe.x + 2, 0, 3, pipe.topHeight);
-      ctx.fillRect(pipe.x + 2, pipe.bottomY, 3, CANVAS_HEIGHT - pipe.bottomY - 50);
+      ctx.fillRect(2, 0, 3, pipe.topHeight);
+      ctx.fillRect(2, pipe.bottomY, 3, CANVAS_HEIGHT - pipe.bottomY - 50);
       
       // Pipe shadows
       ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-      ctx.fillRect(pipe.x + pipe.width - 3, 0, 3, pipe.topHeight);
-      ctx.fillRect(pipe.x + pipe.width - 3, pipe.bottomY, 3, CANVAS_HEIGHT - pipe.bottomY - 50);
+      ctx.fillRect(pipe.width - 3, 0, 3, pipe.topHeight);
+      ctx.fillRect(pipe.width - 3, pipe.bottomY, 3, CANVAS_HEIGHT - pipe.bottomY - 50);
+      
+      ctx.restore();
     });
 
-    // Draw enhanced ground with texture
-    const groundGradient = ctx.createLinearGradient(0, CANVAS_HEIGHT - 50, 0, CANVAS_HEIGHT);
-    groundGradient.addColorStop(0, '#8FBC8F');
-    groundGradient.addColorStop(0.3, '#6B8E23');
-    groundGradient.addColorStop(1, '#556B2F');
-    ctx.fillStyle = groundGradient;
+    // Draw enhanced ground with texture (cached gradient)
+    if (!gradientCacheRef.current.ground) {
+      const groundGradient = ctx.createLinearGradient(0, CANVAS_HEIGHT - 50, 0, CANVAS_HEIGHT);
+      groundGradient.addColorStop(0, '#8FBC8F');
+      groundGradient.addColorStop(0.3, '#6B8E23');
+      groundGradient.addColorStop(1, '#556B2F');
+      gradientCacheRef.current.ground = groundGradient;
+    }
+    ctx.fillStyle = gradientCacheRef.current.ground;
     ctx.fillRect(0, CANVAS_HEIGHT - 50, CANVAS_WIDTH, 50);
     
-    // Ground grass texture
+    // Ground grass texture (reduced detail for performance)
     ctx.fillStyle = '#90EE90';
-    for (let x = 0; x < CANVAS_WIDTH; x += 8) {
+    for (let x = 0; x < CANVAS_WIDTH; x += 16) {
       const grassHeight = Math.sin(x * 0.1) * 3 + 5;
-      ctx.fillRect(x, CANVAS_HEIGHT - 50, 2, -grassHeight);
+      ctx.fillRect(x, CANVAS_HEIGHT - 50, 4, -grassHeight);
     }
 
     // Draw enhanced bird with rotation and details
@@ -423,20 +456,23 @@ const FlappyBird: React.FC = () => {
     ctx.translate(bird.x + bird.width / 2, bird.y + bird.height / 2);
     ctx.rotate((birdRotation * Math.PI) / 180);
     
-    // Bird body gradient
-    const birdGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, bird.width / 2);
-    birdGradient.addColorStop(0, '#FFE55C');
-    birdGradient.addColorStop(0.7, '#FFD700');
-    birdGradient.addColorStop(1, '#FFA500');
-    ctx.fillStyle = birdGradient;
+    // Bird body gradient (cached)
+    if (!gradientCacheRef.current.bird) {
+      const birdGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, bird.width / 2);
+      birdGradient.addColorStop(0, '#FFE55C');
+      birdGradient.addColorStop(0.7, '#FFD700');
+      birdGradient.addColorStop(1, '#FFA500');
+      gradientCacheRef.current.bird = birdGradient;
+    }
+    ctx.fillStyle = gradientCacheRef.current.bird;
     
     // Bird body (ellipse)
     ctx.beginPath();
     ctx.ellipse(0, 0, bird.width / 2, bird.height / 2, 0, 0, Math.PI * 2);
     ctx.fill();
     
-    // Wing animation
-    const wingOffset = Math.sin(frameCountRef.current * 0.3) * 3;
+    // Wing animation (reduced frequency)
+    const wingOffset = Math.sin(frameCountRef.current * 0.2) * 2;
     ctx.fillStyle = '#FF8C00';
     ctx.beginPath();
     ctx.ellipse(-bird.width / 4, wingOffset, bird.width / 3, bird.height / 3, 0, 0, Math.PI * 2);
@@ -470,23 +506,36 @@ const FlappyBird: React.FC = () => {
     
     ctx.restore();
 
-    // Draw particles
-    particles.forEach(particle => {
-      ctx.save();
-      ctx.globalAlpha = particle.life / particle.maxLife;
-      ctx.fillStyle = particle.color;
-      ctx.beginPath();
-      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    });
-
-    requestAnimationFrame(draw);
+    // Draw particles (optimized)
+    if (particles.length > 0) {
+      particles.forEach(particle => {
+        ctx.save();
+        ctx.globalAlpha = particle.life / particle.maxLife;
+        ctx.fillStyle = particle.color;
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    }
   }, [bird, pipes, clouds, particles, timeOfDay, birdRotation]);
 
-  useEffect(() => {
+  // Separate animation loop from game loop
+  const animationLoopRef = useRef<number>();
+  
+  const animationLoop = useCallback(() => {
     draw();
+    animationLoopRef.current = requestAnimationFrame(animationLoop);
   }, [draw]);
+  
+  useEffect(() => {
+    animationLoopRef.current = requestAnimationFrame(animationLoop);
+    return () => {
+      if (animationLoopRef.current) {
+        cancelAnimationFrame(animationLoopRef.current);
+      }
+    };
+  }, [animationLoop]);
 
   return (
     <div style={{ 
