@@ -45,8 +45,10 @@ const BIRD_WIDTH = 30;
 const BIRD_HEIGHT = 25;
 const PIPE_WIDTH = 60;
 const PIPE_GAP = 150;
-const GRAVITY = 0.5;
-const JUMP_STRENGTH = -8;
+const GRAVITY = 0.6;
+const JUMP_STRENGTH = -10;
+const TERMINAL_VELOCITY = 12;
+const AIR_RESISTANCE = 0.98;
 const PIPE_SPEED = 3;
 const PIPE_SPAWN_RATE = 120; // frames
 
@@ -191,15 +193,26 @@ const FlappyBird: React.FC = () => {
     }
 
     setBird(prev => {
+      // Apply gravity to velocity
+      let newVelocity = prev.velocity + GRAVITY;
+      
+      // Apply air resistance for more realistic physics
+      if (newVelocity > 0) {
+        newVelocity *= AIR_RESISTANCE;
+      }
+      
+      // Limit terminal velocity for realistic falling
+      newVelocity = Math.min(newVelocity, TERMINAL_VELOCITY);
+      
       const newBird = {
         ...prev,
-        velocity: prev.velocity + GRAVITY,
-        y: prev.y + prev.velocity + GRAVITY
+        velocity: newVelocity,
+        y: prev.y + newVelocity
       };
 
       // Calculate bird rotation based on velocity (less frequent updates)
       if (frameCountRef.current % 2 === 0) {
-        const rotation = Math.max(-30, Math.min(30, prev.velocity * 3));
+        const rotation = Math.max(-45, Math.min(45, newVelocity * 2.5));
         setBirdRotation(rotation);
       }
 
