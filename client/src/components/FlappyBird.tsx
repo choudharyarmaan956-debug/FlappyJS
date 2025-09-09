@@ -19,6 +19,26 @@ interface Pipe {
   id: number;
 }
 
+interface Cloud {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  speed: number;
+  opacity: number;
+}
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  color: string;
+}
+
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
 const BIRD_WIDTH = 30;
@@ -47,6 +67,10 @@ const FlappyBird: React.FC = () => {
   const [pipes, setPipes] = useState<Pipe[]>([]);
   const [gameState, setGameState] = useState<'ready' | 'playing' | 'gameOver'>('ready');
   const [score, setScore] = useState(0);
+  const [clouds, setClouds] = useState<Cloud[]>([]);
+  const [particles, setParticles] = useState<Particle[]>([]);
+  const [timeOfDay, setTimeOfDay] = useState(0);
+  const [birdRotation, setBirdRotation] = useState(0);
   const [highScore, setHighScore] = useState(() => {
     const saved = localStorage.getItem('flappyBirdHighScore');
     return saved ? parseInt(saved, 10) : 0;
@@ -60,6 +84,22 @@ const FlappyBird: React.FC = () => {
     console.log('FlappyBird component mounted, audio muted:', isMuted);
   }, [isMuted]);
 
+  // Initialize clouds
+  useEffect(() => {
+    const initialClouds: Cloud[] = [];
+    for (let i = 0; i < 8; i++) {
+      initialClouds.push({
+        x: Math.random() * (CANVAS_WIDTH + 200) - 100,
+        y: Math.random() * (CANVAS_HEIGHT * 0.4) + 20,
+        width: Math.random() * 80 + 60,
+        height: Math.random() * 40 + 30,
+        speed: Math.random() * 0.5 + 0.2,
+        opacity: Math.random() * 0.4 + 0.3
+      });
+    }
+    setClouds(initialClouds);
+  }, []);
+
   const resetGame = useCallback(() => {
     setBird({
       x: 100,
@@ -70,9 +110,11 @@ const FlappyBird: React.FC = () => {
     });
     setPipes([]);
     setScore(0);
+    setParticles([]);
     frameCountRef.current = 0;
     nextPipeIdRef.current = 0;
     setGameState('ready');
+    setBirdRotation(0);
   }, []);
 
   const startGame = useCallback(() => {
@@ -133,6 +175,9 @@ const FlappyBird: React.FC = () => {
   const updateGame = useCallback(() => {
     if (gameState !== 'playing') return;
 
+    // Update time of day for dynamic sky
+    setTimeOfDay(prev => (prev + 0.001) % (Math.PI * 2));
+
     setBird(prev => {
       const newBird = {
         ...prev,
@@ -140,8 +185,32 @@ const FlappyBird: React.FC = () => {
         y: prev.y + prev.velocity + GRAVITY
       };
 
+      // Calculate bird rotation based on velocity
+      const rotation = Math.max(-30, Math.min(30, prev.velocity * 3));
+      setBirdRotation(rotation);
+
       return newBird;
     });
+
+    // Update clouds
+    setClouds(prev => prev.map(cloud => ({
+      ...cloud,
+      x: cloud.x - cloud.speed,
+      // Reset cloud position when it goes off screen
+      ...(cloud.x + cloud.width < -100 ? {
+        x: CANVAS_WIDTH + Math.random() * 200,
+        y: Math.random() * (CANVAS_HEIGHT * 0.4) + 20
+      } : {})
+    })));
+
+    // Update particles
+    setParticles(prev => prev.filter(particle => {
+      particle.x += particle.vx;
+      particle.y += particle.vy;
+      particle.life -= 1;
+      particle.vy += 0.1; // gravity for particles
+      return particle.life > 0;
+    }));
 
     setPipes(prev => {
       let newPipes = [...prev];
@@ -190,6 +259,21 @@ const FlappyBird: React.FC = () => {
       if (scoreIncrement > 0) {
         setScore(prevScore => prevScore + scoreIncrement);
         playSuccess();
+        // Add celebration particles
+        const newParticles: Particle[] = [];
+        for (let i = 0; i < 10; i++) {
+          newParticles.push({
+            x: bird.x + bird.width / 2,
+            y: bird.y + bird.height / 2,
+            vx: (Math.random() - 0.5) * 6,
+            vy: (Math.random() - 0.5) * 6,
+            life: 30,
+            maxLife: 30,
+            size: Math.random() * 3 + 2,
+            color: ['#FFD700', '#FFA500', '#FF6B6B', '#4ECDC4'][Math.floor(Math.random() * 4)]
+          });
+        }
+        setParticles(prev => [...prev, ...newParticles]);
       }
 
       return newPipes;
@@ -204,6 +288,22 @@ const FlappyBird: React.FC = () => {
     if (gameState === 'playing' && checkCollision(bird, pipes)) {
       setGameState('gameOver');
       playHit();
+      
+      // Add crash particles
+      const crashParticles: Particle[] = [];
+      for (let i = 0; i < 15; i++) {
+        crashParticles.push({
+          x: bird.x + bird.width / 2,
+          y: bird.y + bird.height / 2,
+          vx: (Math.random() - 0.5) * 8,
+          vy: (Math.random() - 0.5) * 8 - 2,
+          life: 60,
+          maxLife: 60,
+          size: Math.random() * 4 + 1,
+          color: ['#FF6B6B', '#FF8E53', '#FFD93D'][Math.floor(Math.random() * 3)]
+        });
+      }
+      setParticles(prev => [...prev, ...crashParticles]);
       
       // Update high score
       if (score > highScore) {
@@ -234,43 +334,155 @@ const FlappyBird: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear canvas with sky blue background
-    ctx.fillStyle = '#87CEEB';
+    // Animated gradient sky background
+    const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+    const skyProgress = (Math.sin(timeOfDay) + 1) / 2;
+    
+    // Day/night color transitions
+    const skyTop = `hsl(${200 + skyProgress * 30}, ${60 + skyProgress * 20}%, ${70 + skyProgress * 20}%)`;
+    const skyBottom = `hsl(${180 + skyProgress * 40}, ${50 + skyProgress * 30}%, ${80 + skyProgress * 15}%)`;
+    
+    gradient.addColorStop(0, skyTop);
+    gradient.addColorStop(1, skyBottom);
+    ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Draw ground
-    ctx.fillStyle = '#DEB887';
-    ctx.fillRect(0, CANVAS_HEIGHT - 50, CANVAS_WIDTH, 50);
+    // Draw clouds with parallax effect
+    clouds.forEach(cloud => {
+      ctx.save();
+      ctx.globalAlpha = cloud.opacity;
+      ctx.fillStyle = `hsl(0, 0%, ${85 + skyProgress * 10}%)`;
+      
+      // Cloud shape with multiple circles
+      ctx.beginPath();
+      ctx.arc(cloud.x, cloud.y, cloud.width * 0.3, 0, Math.PI * 2);
+      ctx.arc(cloud.x + cloud.width * 0.3, cloud.y, cloud.width * 0.4, 0, Math.PI * 2);
+      ctx.arc(cloud.x + cloud.width * 0.6, cloud.y, cloud.width * 0.35, 0, Math.PI * 2);
+      ctx.arc(cloud.x + cloud.width * 0.2, cloud.y - cloud.height * 0.3, cloud.width * 0.25, 0, Math.PI * 2);
+      ctx.arc(cloud.x + cloud.width * 0.5, cloud.y - cloud.height * 0.2, cloud.width * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
 
-    // Draw pipes
-    ctx.fillStyle = '#228B22';
+    // Enhanced pipes with 3D effect
     pipes.forEach(pipe => {
+      // Main pipe body with gradient
+      const pipeGradient = ctx.createLinearGradient(pipe.x, 0, pipe.x + pipe.width, 0);
+      pipeGradient.addColorStop(0, '#2E8B57');
+      pipeGradient.addColorStop(0.3, '#3CB371');
+      pipeGradient.addColorStop(0.7, '#228B22');
+      pipeGradient.addColorStop(1, '#1F5F3F');
+      
+      ctx.fillStyle = pipeGradient;
+      
       // Top pipe
       ctx.fillRect(pipe.x, 0, pipe.width, pipe.topHeight);
       // Bottom pipe
       ctx.fillRect(pipe.x, pipe.bottomY, pipe.width, CANVAS_HEIGHT - pipe.bottomY - 50);
       
-      // Pipe caps
-      ctx.fillStyle = '#32CD32';
+      // Pipe caps with metallic effect
+      const capGradient = ctx.createLinearGradient(pipe.x - 5, 0, pipe.x + pipe.width + 5, 0);
+      capGradient.addColorStop(0, '#4A4A4A');
+      capGradient.addColorStop(0.2, '#7A7A7A');
+      capGradient.addColorStop(0.5, '#9A9A9A');
+      capGradient.addColorStop(0.8, '#7A7A7A');
+      capGradient.addColorStop(1, '#4A4A4A');
+      
+      ctx.fillStyle = capGradient;
       ctx.fillRect(pipe.x - 5, pipe.topHeight - 20, pipe.width + 10, 20);
       ctx.fillRect(pipe.x - 5, pipe.bottomY, pipe.width + 10, 20);
-      ctx.fillStyle = '#228B22';
+      
+      // Pipe highlights
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.fillRect(pipe.x + 2, 0, 3, pipe.topHeight);
+      ctx.fillRect(pipe.x + 2, pipe.bottomY, 3, CANVAS_HEIGHT - pipe.bottomY - 50);
+      
+      // Pipe shadows
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.fillRect(pipe.x + pipe.width - 3, 0, 3, pipe.topHeight);
+      ctx.fillRect(pipe.x + pipe.width - 3, pipe.bottomY, 3, CANVAS_HEIGHT - pipe.bottomY - 50);
     });
 
-    // Draw bird
-    ctx.fillStyle = '#FFD700';
-    ctx.fillRect(bird.x, bird.y, bird.width, bird.height);
+    // Draw enhanced ground with texture
+    const groundGradient = ctx.createLinearGradient(0, CANVAS_HEIGHT - 50, 0, CANVAS_HEIGHT);
+    groundGradient.addColorStop(0, '#8FBC8F');
+    groundGradient.addColorStop(0.3, '#6B8E23');
+    groundGradient.addColorStop(1, '#556B2F');
+    ctx.fillStyle = groundGradient;
+    ctx.fillRect(0, CANVAS_HEIGHT - 50, CANVAS_WIDTH, 50);
+    
+    // Ground grass texture
+    ctx.fillStyle = '#90EE90';
+    for (let x = 0; x < CANVAS_WIDTH; x += 8) {
+      const grassHeight = Math.sin(x * 0.1) * 3 + 5;
+      ctx.fillRect(x, CANVAS_HEIGHT - 50, 2, -grassHeight);
+    }
+
+    // Draw enhanced bird with rotation and details
+    ctx.save();
+    ctx.translate(bird.x + bird.width / 2, bird.y + bird.height / 2);
+    ctx.rotate((birdRotation * Math.PI) / 180);
+    
+    // Bird body gradient
+    const birdGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, bird.width / 2);
+    birdGradient.addColorStop(0, '#FFE55C');
+    birdGradient.addColorStop(0.7, '#FFD700');
+    birdGradient.addColorStop(1, '#FFA500');
+    ctx.fillStyle = birdGradient;
+    
+    // Bird body (ellipse)
+    ctx.beginPath();
+    ctx.ellipse(0, 0, bird.width / 2, bird.height / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Wing animation
+    const wingOffset = Math.sin(frameCountRef.current * 0.3) * 3;
+    ctx.fillStyle = '#FF8C00';
+    ctx.beginPath();
+    ctx.ellipse(-bird.width / 4, wingOffset, bird.width / 3, bird.height / 3, 0, 0, Math.PI * 2);
+    ctx.fill();
     
     // Bird beak
-    ctx.fillStyle = '#FF8C00';
-    ctx.fillRect(bird.x + bird.width, bird.y + bird.height / 2 - 2, 8, 4);
+    ctx.fillStyle = '#FF6347';
+    ctx.beginPath();
+    ctx.moveTo(bird.width / 2, 0);
+    ctx.lineTo(bird.width / 2 + 8, -2);
+    ctx.lineTo(bird.width / 2 + 8, 2);
+    ctx.closePath();
+    ctx.fill();
     
     // Bird eye
-    ctx.fillStyle = '#000';
-    ctx.fillRect(bird.x + bird.width - 8, bird.y + 5, 4, 4);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(bird.width / 4, -bird.height / 6, 4, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.arc(bird.width / 4 + 1, -bird.height / 6, 2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Eye shine
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(bird.width / 4 + 1.5, -bird.height / 6 - 0.5, 1, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.restore();
+
+    // Draw particles
+    particles.forEach(particle => {
+      ctx.save();
+      ctx.globalAlpha = particle.life / particle.maxLife;
+      ctx.fillStyle = particle.color;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
 
     requestAnimationFrame(draw);
-  }, [bird, pipes]);
+  }, [bird, pipes, clouds, particles, timeOfDay, birdRotation]);
 
   useEffect(() => {
     draw();
