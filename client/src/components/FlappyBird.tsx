@@ -45,10 +45,10 @@ const BIRD_WIDTH = 30;
 const BIRD_HEIGHT = 25;
 const PIPE_WIDTH = 60;
 const PIPE_GAP = 150;
-const GRAVITY = 0.6;
-const JUMP_STRENGTH = -10;
-const TERMINAL_VELOCITY = 12;
-const AIR_RESISTANCE = 0.98;
+const GRAVITY = 0.4;
+const JUMP_STRENGTH = -8.5;
+const TERMINAL_VELOCITY = 8;
+const AIR_RESISTANCE = 0.99;
 const PIPE_SPEED = 3;
 const PIPE_SPAWN_RATE = 120; // frames
 
