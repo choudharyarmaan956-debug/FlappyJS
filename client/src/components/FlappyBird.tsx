@@ -502,9 +502,12 @@ const FlappyBird: React.FC = () => {
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
         style={{
-          border: '2px solid #333',
-          borderRadius: '10px',
-          boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
+          border: '3px solid #2C3E50',
+          borderRadius: '15px',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.4), 0 0 20px rgba(135,206,235,0.3)',
+          background: 'linear-gradient(145deg, #34495e, #2c3e50)',
+          filter: gameState === 'gameOver' ? 'brightness(0.7) blur(1px)' : 'none',
+          transition: 'all 0.3s ease'
         }}
         onClick={jump}
       />
