@@ -1,4 +1,5 @@
 import { users, type User, type InsertUser, type Score, type InsertScore } from "@shared/schema";
+import bcrypt from "bcrypt";
 
 // modify the interface with any CRUD methods
 // you might need
@@ -7,6 +8,7 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  verifyPassword(username: string, password: string): Promise<User | undefined>;
   addScore(score: InsertScore): Promise<Score>;
   getUserScores(userId: number): Promise<Score[]>;
   getTopScores(limit?: number): Promise<(Score & { user: User })[]>;
@@ -14,11 +16,15 @@ export interface IStorage {
 
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
+  private scores: Map<number, Score>;
   currentId: number;
+  currentScoreId: number;
 
   constructor() {
     this.users = new Map();
+    this.scores = new Map();
     this.currentId = 1;
+    this.currentScoreId = 1;
   }
 
   async getUser(id: number): Promise<User | undefined> {
@@ -32,22 +38,49 @@ export class MemStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(insertUser.password, saltRounds);
     const id = this.currentId++;
-    const user: User = { ...insertUser, id, createdAt: new Date() };
+    const user: User = { ...insertUser, password: hashedPassword, id, createdAt: new Date() };
     this.users.set(id, user);
     return user;
   }
 
-  async addScore(score: InsertScore): Promise<Score> {
-    throw new Error("MemStorage score operations not implemented - use Supabase storage");
+  async verifyPassword(username: string, password: string): Promise<User | undefined> {
+    const user = await this.getUserByUsername(username);
+    if (!user) return undefined;
+    
+    const isValid = await bcrypt.compare(password, user.password);
+    return isValid ? user : undefined;
+  }
+
+  async addScore(insertScore: InsertScore): Promise<Score> {
+    const id = this.currentScoreId++;
+    const score: Score = { ...insertScore, id, createdAt: new Date() };
+    this.scores.set(id, score);
+    return score;
   }
 
   async getUserScores(userId: number): Promise<Score[]> {
-    throw new Error("MemStorage score operations not implemented - use Supabase storage");
+    return Array.from(this.scores.values())
+      .filter(score => score.userId === userId)
+      .sort((a, b) => b.score - a.score); // Sort by score descending
   }
 
-  async getTopScores(limit?: number): Promise<(Score & { user: User })[]> {
-    throw new Error("MemStorage score operations not implemented - use Supabase storage");
+  async getTopScores(limit: number = 10): Promise<(Score & { user: User })[]> {
+    const allScores = Array.from(this.scores.values())
+      .sort((a, b) => b.score - a.score) // Sort by score descending
+      .slice(0, limit);
+    
+    const scoresWithUsers: (Score & { user: User })[] = [];
+    for (const score of allScores) {
+      const user = await this.getUser(score.userId);
+      if (user) {
+        scoresWithUsers.push({ ...score, user });
+      }
+    }
+    
+    return scoresWithUsers;
   }
 }
 
@@ -91,14 +124,26 @@ export class SupabaseStorage implements IStorage {
   }
 
   async createUser(user: InsertUser): Promise<User> {
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(user.password, saltRounds);
+    const userWithHashedPassword = { ...user, password: hashedPassword };
+    
     const { data, error } = await this.supabase
       .from('users')
-      .insert(user)
+      .insert(userWithHashedPassword)
       .select()
       .single();
     
     if (error) throw new Error(`Failed to create user: ${error.message}`);
     return data as User;
+  }
+
+  async verifyPassword(username: string, password: string): Promise<User | undefined> {
+    const user = await this.getUserByUsername(username);
+    if (!user) return undefined;
+    
+    const isValid = await bcrypt.compare(password, user.password);
+    return isValid ? user : undefined;
   }
 
   async addScore(score: InsertScore): Promise<Score> {
@@ -138,6 +183,8 @@ export class SupabaseStorage implements IStorage {
   }
 }
 
-// Use Supabase storage if environment variables are available, otherwise fallback to memory
-const useSupabase = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY;
-export const storage: IStorage = useSupabase ? new SupabaseStorage() : new MemStorage();
+// Temporarily force memory storage for testing
+console.log('Using memory storage for testing');
+const storage = new MemStorage();
+
+export { storage };

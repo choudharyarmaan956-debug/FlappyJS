@@ -50,25 +50,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {isLogin ? 'Login to Play' : 'Create Account'}
+      <DialogContent className="sm:max-w-md bg-white border-2 border-gray-200 shadow-2xl backdrop-blur-sm animate-in slide-in-from-top-4 duration-300">
+        <div className="absolute inset-0 bg-white/95 backdrop-blur-md rounded-lg -z-10"></div>
+        <DialogHeader className="relative z-10">
+          <DialogTitle className="text-2xl font-bold text-gray-800 text-center">
+            {isLogin ? '🎮 Login to Play' : '🚀 Create Account'}
           </DialogTitle>
-          <DialogDescription>
-            {isLogin ? 'Login to save your high scores' : 'Create an account to track your progress'}
+          <DialogDescription className="text-gray-600 text-center">
+            {isLogin ? 'Login to save your high scores and compete!' : 'Create an account to track your progress'}
           </DialogDescription>
         </DialogHeader>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5 relative z-10">
           {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
+            <Alert variant="destructive" className="bg-red-50 border-red-200 text-red-800">
+              <AlertDescription className="font-medium">{error}</AlertDescription>
             </Alert>
           )}
           
           <div className="space-y-2">
-            <Label htmlFor="username">Username</Label>
+            <Label htmlFor="username" className="text-gray-700 font-medium">Username</Label>
             <Input
               id="username"
               type="text"
@@ -77,11 +78,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               placeholder="Enter your username"
               required
               disabled={isLoading}
+              className="bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-gray-900 placeholder-gray-500"
             />
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password" className="text-gray-700 font-medium">Password</Label>
             <Input
               id="password"
               type="password"
@@ -90,12 +92,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               placeholder="Enter your password"
               required
               disabled={isLoading}
+              className="bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-gray-900 placeholder-gray-500"
             />
           </div>
           
           {!isLogin && (
             <div className="space-y-2">
-              <Label htmlFor="displayName">Display Name</Label>
+              <Label htmlFor="displayName" className="text-gray-700 font-medium">Display Name</Label>
               <Input
                 id="displayName"
                 type="text"
@@ -104,13 +107,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 placeholder="Enter your display name"
                 required
                 disabled={isLoading}
+                className="bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-gray-900 placeholder-gray-500"
               />
             </div>
           )}
           
-          <div className="flex flex-col space-y-2">
-            <Button type="submit" disabled={isLoading} className="w-full">
-              {isLoading ? 'Loading...' : (isLogin ? 'Login' : 'Register')}
+          <div className="flex flex-col space-y-3 pt-2">
+            <Button 
+              type="submit" 
+              disabled={isLoading} 
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 shadow-lg transform transition hover:scale-105"
+            >
+              {isLoading ? '⏳ Loading...' : (isLogin ? '🎮 Login & Play' : '🚀 Create Account')}
             </Button>
             
             <Button 
@@ -118,7 +126,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               variant="ghost" 
               onClick={switchMode}
               disabled={isLoading}
-              className="w-full"
+              className="w-full text-gray-600 hover:text-gray-800 hover:bg-gray-100 transition-colors"
             >
               {isLogin ? "Don't have an account? Register" : "Already have an account? Login"}
             </Button>
