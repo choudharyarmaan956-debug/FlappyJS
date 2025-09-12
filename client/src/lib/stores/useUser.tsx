@@ -8,8 +8,7 @@ interface UserState {
   error: string | null;
   
   // Actions
-  login: (username: string, password: string) => Promise<boolean>;
-  register: (username: string, password: string, displayName: string) => Promise<boolean>;
+  login: (displayName: string) => Promise<boolean>;
   logout: () => void;
   clearError: () => void;
   submitScore: (score: number) => Promise<boolean>;
@@ -22,7 +21,7 @@ export const useUser = create<UserState>()(
       isLoading: false,
       error: null,
       
-      login: async (username: string, password: string) => {
+      login: async (displayName: string) => {
         set({ isLoading: true, error: null });
         
         try {
@@ -31,7 +30,7 @@ export const useUser = create<UserState>()(
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ username, password }),
+            body: JSON.stringify({ displayName }),
           });
           
           const data = await response.json();
@@ -49,32 +48,6 @@ export const useUser = create<UserState>()(
         }
       },
       
-      register: async (username: string, password: string, displayName: string) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const response = await fetch('/api/register', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ username, password, displayName }),
-          });
-          
-          const data = await response.json();
-          
-          if (!response.ok) {
-            set({ error: data.error || 'Registration failed', isLoading: false });
-            return false;
-          }
-          
-          set({ user: data.user, isLoading: false, error: null });
-          return true;
-        } catch (error) {
-          set({ error: 'Network error', isLoading: false });
-          return false;
-        }
-      },
       
       logout: () => {
         set({ user: null, error: null });
