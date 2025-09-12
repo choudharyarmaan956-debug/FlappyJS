@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useAudio } from '../lib/stores/useAudio';
+import { useUser } from '../lib/stores/useUser';
 import GameUI from './GameUI';
 
 interface Bird {
@@ -89,6 +90,7 @@ const FlappyBird: React.FC = () => {
   });
 
   const { playHit, playSuccess, isMuted } = useAudio();
+  const { submitScore } = useUser();
 
   // Initialize audio
   useEffect(() => {
@@ -343,15 +345,22 @@ const FlappyBird: React.FC = () => {
       }
       setParticles(prev => [...prev, ...crashParticles]);
       
-      // Update high score
+      // Update high score and submit to database
       if (score > highScore) {
         setHighScore(score);
         localStorage.setItem('flappyBirdHighScore', score.toString());
       }
+      
+      // Submit score to database (async, don't block game)
+      if (score > 0) {
+        submitScore(score).catch(error => {
+          console.log('Score submission failed:', error);
+        });
+      }
     }
 
     gameLoopRef.current = requestAnimationFrame(gameLoop);
-  }, [updateGame, checkScore, gameState, bird, pipes, score, highScore, playHit]);
+  }, [updateGame, checkScore, gameState, bird, pipes, score, highScore, playHit, submitScore]);
 
   useEffect(() => {
     if (gameState === 'playing') {
