@@ -6,9 +6,8 @@ import bcrypt from "bcrypt";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByName(displayName: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  verifyPassword(username: string, password: string): Promise<User | undefined>;
   addScore(score: InsertScore): Promise<Score>;
   getUserScores(userId: number): Promise<Score[]>;
   getTopScores(limit?: number): Promise<(Score & { user: User })[]>;
@@ -31,28 +30,20 @@ export class MemStorage implements IStorage {
     return this.users.get(id);
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  async getUserByName(displayName: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(
-      (user) => user.username === username,
+      (user) => user.displayName === displayName,
     );
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const saltRounds = 12;
-    const hashedPassword = await bcrypt.hash(insertUser.password, saltRounds);
     const id = this.currentId++;
-    const user: User = { ...insertUser, password: hashedPassword, id, createdAt: new Date() };
+    const user: User = { ...insertUser, id, createdAt: new Date() };
     this.users.set(id, user);
     return user;
   }
 
-  async verifyPassword(username: string, password: string): Promise<User | undefined> {
-    const user = await this.getUserByUsername(username);
-    if (!user) return undefined;
-    
-    const isValid = await bcrypt.compare(password, user.password);
-    return isValid ? user : undefined;
-  }
+
 
   async addScore(insertScore: InsertScore): Promise<Score> {
     const id = this.currentScoreId++;
@@ -112,11 +103,11 @@ export class SupabaseStorage implements IStorage {
     return data as User;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  async getUserByName(displayName: string): Promise<User | undefined> {
     const { data, error } = await this.supabase
       .from('users')
       .select('*')
-      .eq('username', username)
+      .eq('display_name', displayName)
       .single();
     
     if (error || !data) return undefined;
@@ -124,13 +115,9 @@ export class SupabaseStorage implements IStorage {
   }
 
   async createUser(user: InsertUser): Promise<User> {
-    const saltRounds = 12;
-    const hashedPassword = await bcrypt.hash(user.password, saltRounds);
-    const userWithHashedPassword = { ...user, password: hashedPassword };
-    
     const { data, error } = await this.supabase
       .from('users')
-      .insert(userWithHashedPassword)
+      .insert(user)
       .select()
       .single();
     
@@ -138,13 +125,7 @@ export class SupabaseStorage implements IStorage {
     return data as User;
   }
 
-  async verifyPassword(username: string, password: string): Promise<User | undefined> {
-    const user = await this.getUserByUsername(username);
-    if (!user) return undefined;
-    
-    const isValid = await bcrypt.compare(password, user.password);
-    return isValid ? user : undefined;
-  }
+
 
   async addScore(score: InsertScore): Promise<Score> {
     const { data, error } = await this.supabase
