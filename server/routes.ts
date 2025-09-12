@@ -21,16 +21,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const { username, password, displayName } = result.data;
+      const { displayName } = result.data;
       
       // Check if user already exists
-      const existingUser = await storage.getUserByUsername(username);
+      const existingUser = await storage.getUserByName(displayName);
       if (existingUser) {
-        return res.status(409).json({ error: "Username already exists" });
+        return res.status(409).json({ error: "Name already exists" });
       }
 
-      // Create new user (password will be hashed in storage)
-      const user = await storage.createUser({ username, password, displayName });
+      // Create new user
+      const user = await storage.createUser({ displayName });
       
       // Generate JWT token
       const token = generateJWT(user);
@@ -43,28 +43,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
       
-      // Don't send password back
-      const { password: _, ...userWithoutPassword } = user;
-      res.status(201).json({ user: userWithoutPassword });
+      res.status(201).json({ user });
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ error: "Failed to register user" });
     }
   });
 
-  // User login endpoint
+  // User login endpoint - simplified name-only
   app.post("/api/login", async (req, res) => {
     try {
-      const { username, password } = req.body;
+      const { displayName } = req.body;
       
-      if (!username || !password) {
-        return res.status(400).json({ error: "Username and password required" });
+      if (!displayName) {
+        return res.status(400).json({ error: "Name is required" });
       }
 
-      // Use secure password verification
-      const user = await storage.verifyPassword(username, password);
+      // Find or create user by name
+      let user = await storage.getUserByName(displayName);
       if (!user) {
-        return res.status(401).json({ error: "Invalid username or password" });
+        user = await storage.createUser({ displayName });
       }
 
       // Generate JWT token
@@ -78,9 +76,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
 
-      // Don't send password back
-      const { password: _, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword });
+      res.json({ user });
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ error: "Failed to login" });
@@ -176,9 +172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "User not found" });
       }
 
-      // Don't send password back
-      const { password: _, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword });
+      res.json({ user });
     } catch (error) {
       console.error("Get user error:", error);
       res.status(500).json({ error: "Failed to get user" });
@@ -190,9 +184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user!;
       
-      // Don't send password back
-      const { password: _, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword });
+      res.json({ user });
     } catch (error) {
       console.error("Get user error:", error);
       res.status(500).json({ error: "Failed to get user" });
