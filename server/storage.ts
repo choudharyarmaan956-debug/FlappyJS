@@ -183,8 +183,8 @@ export class SupabaseStorage implements IStorage {
   }
 }
 
-// Temporarily force memory storage for testing
-console.log('Using memory storage for testing');
-const storage = new MemStorage();
+// Use Supabase storage for production
+console.log('Using Supabase storage');
+const storage = new SupabaseStorage();
 
 export { storage };
