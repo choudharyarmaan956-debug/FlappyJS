@@ -4,9 +4,7 @@ import { z } from "zod";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  displayName: text("display_name").notNull(),
+  displayName: text("display_name").notNull().unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -18,20 +16,11 @@ export const scores = pgTable("scores", {
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
   displayName: true,
 }).extend({
-  password: z.string()
-    .min(8, "Password must be at least 8 characters long")
-    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, "Password must contain at least one lowercase letter, one uppercase letter, and one number"),
-  username: z.string()
-    .min(3, "Username must be at least 3 characters long")
-    .max(30, "Username must be no more than 30 characters long")
-    .regex(/^[a-zA-Z0-9_-]+$/, "Username can only contain letters, numbers, underscores, and hyphens"),
   displayName: z.string()
-    .min(1, "Display name is required")
-    .max(50, "Display name must be no more than 50 characters long")
+    .min(1, "Name is required")
+    .max(50, "Name must be no more than 50 characters long")
     .trim()
 });
 
