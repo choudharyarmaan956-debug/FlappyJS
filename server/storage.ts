@@ -83,7 +83,7 @@ export class SupabaseStorage implements IStorage {
 
   constructor() {
     const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     
     if (!supabaseUrl || !supabaseKey) {
       throw new Error('Supabase credentials not found in environment variables');
@@ -117,12 +117,17 @@ export class SupabaseStorage implements IStorage {
   async createUser(user: InsertUser): Promise<User> {
     const { data, error } = await this.supabase
       .from('users')
-      .insert(user)
+      .insert({ display_name: user.displayName })
       .select()
       .single();
     
     if (error) throw new Error(`Failed to create user: ${error.message}`);
-    return data as User;
+    // Map snake_case from DB to camelCase for the app
+    return {
+      id: data.id,
+      displayName: data.display_name,
+      createdAt: data.created_at
+    } as User;
   }
 
 
@@ -130,23 +135,35 @@ export class SupabaseStorage implements IStorage {
   async addScore(score: InsertScore): Promise<Score> {
     const { data, error } = await this.supabase
       .from('scores')
-      .insert(score)
+      .insert({ user_id: score.userId, score: score.score })
       .select()
       .single();
     
     if (error) throw new Error(`Failed to add score: ${error.message}`);
-    return data as Score;
+    // Map snake_case from DB to camelCase for the app
+    return {
+      id: data.id,
+      userId: data.user_id,
+      score: data.score,
+      createdAt: data.created_at
+    } as Score;
   }
 
   async getUserScores(userId: number): Promise<Score[]> {
     const { data, error } = await this.supabase
       .from('scores')
       .select('*')
-      .eq('userId', userId)
+      .eq('user_id', userId)
       .order('score', { ascending: false });
     
     if (error) throw new Error(`Failed to get user scores: ${error.message}`);
-    return data as Score[];
+    // Map snake_case from DB to camelCase for the app
+    return data.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      score: row.score,
+      createdAt: row.created_at
+    })) as Score[];
   }
 
   async getTopScores(limit: number = 10): Promise<(Score & { user: User })[]> {
