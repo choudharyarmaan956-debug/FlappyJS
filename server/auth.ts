@@ -14,7 +14,7 @@ declare global {
 
 export interface JWTPayload {
   userId: number;
-  username: string;
+  displayName: string;
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
@@ -23,7 +23,7 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 export function generateJWT(user: User): string {
   const payload: JWTPayload = {
     userId: user.id,
-    username: user.username
+    displayName: user.displayName
   };
   
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
